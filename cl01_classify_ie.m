@@ -37,10 +37,10 @@ for s = 1:max_ws
 
         xx = feat(:,:,s,p);
 
-        [~,perf_measures_perm] = svm_in_ex([xx,y],cv_params);
+        [~,perf_measures] = svm_in_ex([xx,y],cv_params);
 
-        acc(s,p) = perf_measures_perm.acc;
-        cm(:,:,s,p) = perf_measures_perm.cm;
+        acc(s,p) = perf_measures.acc;
+        cm(:,:,s,p) = perf_measures.cm;
 
     end
 
