@@ -2,13 +2,12 @@
 
 This research project investigates whether internally-oriented (I) and externally-oriented (E) spontaneous mentation states can be distinguished using machine learning classifiers applied to EEG and fMRI data. The analysis uses Descriptive Experience Sampling (DES) methodology with beep-triggered experience sampling.
 
+This repository contains the official implementation for the paper "Brain network and oscillation dynamics mirror the inward and outward orientation of spontaneous though" by Hampejs et al. (2025).
+Preprint of the paper is available on bioRxiv at <https://doi.org/10.1101/2025.10.31.684884>
+
 ## Overview
 
-The pipeline performs time-resolved classification of I/E states across different sliding window sizes and positions relative to the DES beep signal. Key innovations include:
-
-- **Sliding window approach**: Systematic exploration of temporal windows ranging from 0.1-2.0 seconds in size, positioned from -0.5 to -5.0 seconds before the beep
-- **TFCE correction**: Threshold-Free Cluster Enhancement for multiple comparison correction using permutation testing
-- **Multi-modal support**: Compatible with both EEG and fMRI feature data
+The pipeline performs time-resolved classification of I/E states across different sliding window sizes and positions relative to the DES beep signal. Systematic exploration of temporal windows ranging from 0.1-2.0 seconds in size, positioned from -0.5 to -5.0 seconds before the beep.
 
 ## Directory Structure
 
@@ -16,33 +15,35 @@ The pipeline performs time-resolved classification of I/E states across differen
 .
 ├── cl01_classify_ie.m          # Main MATLAB classification script
 ├── cl02_tfce.ipynb             # Python TFCE analysis notebook
+├── .gitignore                  
 ├── classifiers/
-│   └── svm_in_ex.m             # SVM classifier with cross-validation
-├── functions/                   # Additional helper functions (empty)
+│   └── svm_in_ex.m             # SVM classifier with cost-sensitive learning and LOOCV
 ├── data/
-│   ├── eeg_feat_*.mat          # EEG feature matrices
-│   └── fmri_feat_*.mat         # fMRI feature matrices
-├── results/                     # Classification outputs
-│   ├── classified_ie.mat       # Accuracy and confusion matrices
-│   └── *.csv                   # Derived results (masks, predictions, etc.)
-└── figures/                     # Publication-ready visualizations
+│   ├── eeg_feat.mat            # EEG feature matrices
+│   └── fmri_feat.mat           # fMRI feature matrices
+├── results/
+│   ├── eeg_results.mat         # EEG classification outputs (accuracy, balanced accuracy, permutations)
+│   └── fmri_results.mat        # fMRI classification outputs (accuracy, balanced accuracy, permutations)
+└── figures/
+    ├── tfce_acc_eeg.png        # TFCE visualization for EEG results
+    └── tfce_acc_fmri.png       # TFCE visualization for fMRI results
 ```
 
 ## Data Format
 
 ### Feature Matrices (.mat files)
 
-The input data should be loaded as a MATLAB struct with the following fields:
+The input data is loaded as a MATLAB struct with the following fields:
 
-- `x2`: 4D array `[features × window_positions × window_sizes × feature_types]`
+- `x`: 4D array `[features × window_positions × window_sizes × feature_types]`
 - `y`: Label vector (1 = internal, 2 = external)
 - `sub_id`: Subject identifiers for proper cross-validation
 
 Example data structure:
 ```matlab
-data = load('data/eeg_feat_20240710_151724.mat');
-feat = data.x2;      % Features
-y = data.y;          % Labels
+data = load('data/fmri_feat.mat');
+x = data.x;      % Features
+y = data.y;      % Labels
 sub_id = data.sub_id; % Subject IDs
 ```
 
@@ -53,32 +54,36 @@ sub_id = data.sub_id; % Subject IDs
 This MATLAB script performs leave-one-subject-out cross-validated SVM classification:
 
 **Workflow:**
-1. Loads feature data from `.mat` file
-2. Iterates through all window sizes (1-20) and feature positions (1-26)
+1. Loads feature data from `.mat` file (EEG or fMRI)
+2. Iterates through all window sizes positions
 3. Trains linear SVM classifier with cost-sensitive learning for class imbalance
 4. Stores accuracy and confusion matrix for each configuration
 5. Performs 5000 label permutations for null distribution estimation
-6. Saves results to `results/classified_ie.mat`
+6. Saves results to `results/{modality}_results.mat`
 
 **Key Parameters:**
 - Classifier: Linear SVM with cost-sensitive learning
-- Cross-validation: Leave-one-subject-out
-- Window sizes: 1-20 (corresponds to 0.1-2.0 seconds)
-- Window positions: 1-26 (corresponds to -0.5 to -5.0 seconds before beep)
+- Cross-validation: Leave-one-subject-out (LOOCV)
+- Window sizes correspond to 0.1-2.0 seconds
+- Window positions correspond to -0.5 to -5.0 seconds before beep
 - Permutations: 5000 for TFCE significance testing
+
+**Parallel Processing:**
+- Uses parallel pool with 50 workers for accelerated computation
 
 ### Step 2: TFCE Analysis (`cl02_tfce.ipynb`)
 
 This Jupyter notebook applies TFCE enhancement and statistical testing:
 
 **Workflow:**
-1. Loads classification results from Step 1
+1. Loads classification results from Step 1 (`{modality}_results.mat`)
 2. Applies TFCE (Threshold-Free Cluster Enhancement) to accuracy maps
-3. Computes TFCE scores for permuted null distributions
+3. Computes TFCE scores for permuted null distributions (5000 permutations)
 4. Calculates p-values by comparing observed vs. null TFCE scores
 5. Generates significance mask at p < 0.05
 6. Identifies optimal window size/position with maximum significant accuracy
 7. Visualizes results with highlighted significant regions
+8. Saves figure to `figures/tfce_acc_{modality}.png`
 
 **TFCE Parameters:**
 - H (height exponent): 2.0
@@ -88,20 +93,19 @@ This Jupyter notebook applies TFCE enhancement and statistical testing:
 
 ## Output Files
 
-### From `cl01_classify_ie.m`
+### Classification Results (`results/*.mat`)
+
+| File | Contents |
+|------|----------|
+| `eeg_results.mat` | `acc` (accuracy), `acc_bal` (balanced accuracy), `acc_perm` (permuted accuracies) |
+| `fmri_results.mat` | `acc` (accuracy), `acc_bal` (balanced accuracy), `acc_perm` (permuted accuracies) |
+
+### Visualization Outputs (`figures/`)
 
 | File | Description |
 |------|-------------|
-| `results/classified_ie.mat` | Contains `acc` (accuracy), `cm` (confusion matrices), `acc_perm` (permuted accuracies) |
-
-### From `cl02_tfce.ipynb`
-
-| File | Description |
-|------|-------------|
-| `tfce_mask.csv` | Binary mask of significant (p<0.05) window configurations |
-| `best_feature.csv` | Features at optimal window configuration |
-| `best_cm.csv` | Confusion matrix at optimal configuration |
-| `y_hat.csv` | Predicted labels at optimal configuration |
+| `tfce_acc_eeg.png` | EEG classification accuracy heatmap with TFCE-significant regions highlighted |
+| `tfce_acc_fmri.png` | fMRI classification accuracy heatmap with TFCE-significant regions highlighted |
 
 ## Results Interpretation
 
@@ -117,22 +121,51 @@ This indicates that neural features approximately 4 seconds before the beep, ana
 ### Visualization
 
 The pipeline generates heatmaps showing:
-- **X-axis**: Window position relative to beep (negative = before beep)
-- **Y-axis**: Window size in seconds
-- **Color**: Classification accuracy
+- **X-axis**: Window position relative to beep (negative values = before beep, ranging from -0.5 to -5.0 seconds)
+- **Y-axis**: Window size in seconds (ranging from 0.1 to 2.0 seconds)
+- **Color**: Classification accuracy (red colormap)
 - **Yellow markers**: Statistically significant regions (TFCE-corrected p<0.05)
 
 ## Dependencies
 
 ### MATLAB
-- Statistics and Machine Learning Toolbox
-- Parallel Computing Toolbox (for parallel processing)
+- Statistics and Machine Learning Toolbox (for `fitcsvm`, `crossval`, `kfoldPredict`)
+- Parallel Computing Toolbox (for `parpool`, `parfor`)
 
 ### Python
 - numpy
 - pandas
-- scipy
+- scipy (for `ndimage`, `io`)
 - matplotlib
-- scikit-learn
-- python-matlab-util (for .mat file reading)
+- scikit-learn (not directly used, but may be needed for extensions)
 
+## Usage
+
+### Running the MATLAB Classification
+
+```matlab
+% Select modality - 'eeg' or 'fmri'
+modality = 'fmri';
+
+switch modality
+    case 'fmri'
+        data = load('data/fmri_feat.mat');
+    case 'eeg'
+        data = load('data/eeg_feat.mat');
+end
+```
+
+### Running the TFCE Analysis
+
+```python
+# Select modality - 'eeg' or 'fmri'
+modality = 'eeg'
+
+match modality:
+    case 'fmri':
+        data = sio.loadmat('data/fmri_feat.mat')
+        results = sio.loadmat('results/fmri_results.mat')
+    case 'eeg':
+        data = sio.loadmat('data/eeg_feat.mat')
+        results = sio.loadmat('results/eeg_results.mat')
+```

@@ -107,10 +107,17 @@ partitionedModel = crossval(trainedClassifier.ClassificationSVM, cv_params{1}, c
 % Compute validation predictions
 [validationPredictions, validationScores] = kfoldPredict(partitionedModel);
 
+% Compute confusion matrix
+confMat = confusionmat(response,validationPredictions);
+
 % Compute validation accuracy
 validationAccuracy = 1 - kfoldLoss(partitionedModel, 'LossFun', 'ClassifError');
 
-confMat = confusionmat(response,validationPredictions);
+% Compute balanced accuracy
+acc_bal = @(confMat) sum(diag(confMat)./sum(confMat,2))*0.5;
+balancedAccuracy = acc_bal(confMat);
 
-perf_measures.acc = validationAccuracy;
+% Prepare outputs
 perf_measures.cm = confMat;
+perf_measures.acc = validationAccuracy;
+perf_measures.acc_bal = balancedAccuracy;
